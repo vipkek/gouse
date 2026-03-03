@@ -54,7 +54,7 @@ import (
 const (
 	errorLogPrefix = "error: "
 	logFlag        = 0
-	currentVersion = "1.3.2"
+	currentVersion = "1.3.3"
 )
 
 var (

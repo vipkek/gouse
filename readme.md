@@ -12,7 +12,7 @@ go install github.com/looshch/gouse@latest
 <!-- prettier-ignore -->
 > [!CAUTION]
 >
-> Non-stable (archived) Go versions require older `gouse` version.
+> Archived Go versions require older `gouse` version.
 >
 > | Go version   | gouse version |
 > | ------------ |-------------- |
@@ -68,6 +68,8 @@ from the errors.
 
 - Vim: just bind `<cmd> w <bar> silent !gouse -w %<cr>` to some mapping.
 - [Visual Studio Code plugin](https://marketplace.visualstudio.com/items?itemName=looshch.gouse).
+- [Open VSX Registry plugin](https://open-vsx.org/extension/looshch/gouse)—works
+  in Cursor, Windsurf, Google Antigravity, Kiro, Trae, Void.
 
 ## Credits
 
