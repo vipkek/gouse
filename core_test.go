@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -98,53 +100,36 @@ const getSymbolsInfoFromBuildErrorsInput = `
 	package p
 
 	func main() {
-	var (
-		notUsed0 = false
-		used0    bool
-	)
-	notUsed1, used1 := "", "", "" // more values than variables
-	_, _ = used0, used1 // no closing brace
+		var notUsed0 missingType
+		var notUsed1 int
+	}
 `
 
 func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	t.Cleanup(cancel)
-	t.Run("ignore other errors", func(t *testing.T) {
+	t.Run("collects matching diagnostics while ignoring others", func(t *testing.T) {
 		t.Parallel()
-		input := []byte(
-			getSymbolsInfoFromBuildErrorsInput,
-		)
 		want := []symbolInfo{
-			{"notUsed0", 5},
-			{"notUsed1", 8},
+			{" notUsed0", 4},
+			{" notUsed1", 5},
 		}
 		got, err := getSymbolsInfoFromBuildErrors(
-			ctx, input, notUsedErrorRegexpSuffix,
+			context.Background(),
+			[]byte(getSymbolsInfoFromBuildErrorsInput),
+			notUsedErrorWithColonSuffix,
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i, info := range got {
-			if info.name != want[i].name {
-				t.Errorf(
-					"got: %s, want: %s",
-					info.name,
-					want[i].name,
-				)
-			}
-			if info.lineNum != want[i].lineNum {
-				t.Errorf(
-					"got: %d, want: %d",
-					info.lineNum,
-					want[i].lineNum,
-				)
-			}
+		if len(got) != len(want) {
+			t.Fatalf("got: %v, want: %v", got, want)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("got: %v, want: %v", got, want)
 		}
 	})
-	t.Run("pre-canceled context", func(t *testing.T) {
+	t.Run("pre-canceled context returns context.Canceled", func(t *testing.T) {
 		t.Parallel()
 		canceledCtx, cancel := context.WithCancel(
 			context.Background(),
@@ -153,13 +138,13 @@ func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 		got, err := getSymbolsInfoFromBuildErrors(
 			canceledCtx,
 			[]byte("package p\n"),
-			notUsedErrorRegexpSuffixWithColon,
+			notUsedErrorWithColonSuffix,
 		)
-		if err != nil {
-			t.Fatalf("got: %v, want: nil", err)
-		}
 		if got != nil {
 			t.Fatalf("got: %v, want: nil", got)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got: %v, want: %v", err, context.Canceled)
 		}
 	})
 }

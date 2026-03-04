@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,34 +18,82 @@ const filesCmpErr = `
 %s`
 
 type fakeFile struct {
-	file
-
-	contents   *bytes.Buffer
+	contents   []byte
+	offset     int64
 	closeCount int
 	closed     bool
 }
 
+var (
+	errFakeFileNegativeOffset    = errors.New("fakeFile.Seek: negative offset")
+	errFakeFileUnsupportedWhence = errors.New("fakeFile.Seek: only io.SeekStart is supported")
+	errFakeFileNegativeSize      = errors.New("fakeFile.Truncate: negative size")
+)
+
 func newFakeFile(buf ...byte) *fakeFile {
-	f := fakeFile{contents: bytes.NewBuffer(buf)}
+	f := fakeFile{contents: append([]byte(nil), buf...)}
 	return &f
 }
 
 func (f *fakeFile) Read(b []byte) (int, error) {
-	n, err := f.contents.Read(b)
-	return n, err
+	start := int(f.offset)
+	if start >= len(f.contents) {
+		return 0, io.EOF
+	}
+	n := copy(b, f.contents[start:])
+	f.offset += int64(n)
+	return n, nil
 }
 
 func (f *fakeFile) Write(b []byte) (int, error) {
-	n, err := f.contents.Write(b)
-	return n, err
+	start := int(f.offset)
+	if start > len(f.contents) {
+		f.contents = append(
+			f.contents,
+			make([]byte, start-len(f.contents))...,
+		)
+	}
+	end := start + len(b)
+	if end > len(f.contents) {
+		f.contents = append(
+			f.contents,
+			make([]byte, end-len(f.contents))...,
+		)
+	}
+	copy(f.contents[start:end], b)
+	f.offset = int64(end)
+	return len(b), nil
 }
 
 func (f *fakeFile) Seek(offset int64, whence int) (int64, error) {
-	return 0, nil
+	if whence != io.SeekStart {
+		return 0, errFakeFileUnsupportedWhence
+	}
+	if offset < 0 {
+		return 0, errFakeFileNegativeOffset
+	}
+	f.offset = offset
+	return f.offset, nil
 }
 
 func (f *fakeFile) Truncate(size int64) error {
-	f.contents = bytes.NewBuffer([]byte{})
+	if size < 0 {
+		return errFakeFileNegativeSize
+	}
+
+	newLen := int(size)
+	switch {
+	case newLen < len(f.contents):
+		f.contents = f.contents[:newLen]
+	case newLen > len(f.contents):
+		f.contents = append(
+			f.contents,
+			make([]byte, newLen-len(f.contents))...,
+		)
+	}
+	if f.offset > size {
+		f.offset = size
+	}
 	return nil
 }
 
@@ -54,6 +103,18 @@ func (f *fakeFile) Close() error {
 	}
 	f.closed = true
 	f.closeCount++
+	return nil
+}
+
+func (f *fakeFile) Bytes() []byte {
+	return append([]byte(nil), f.contents...)
+}
+
+func (f *fakeFile) reopen() error {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	f.closed = false
 	return nil
 }
 
@@ -113,7 +174,11 @@ func TestRun(t *testing.T) {
 	}
 	for _, tt := range tests {
 		test := tt
-		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+		testName := strings.Join(test.args, " ")
+		if testName == "" {
+			testName = "stdin"
+		}
+		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			args := test.args
 			var (
@@ -122,9 +187,7 @@ func TestRun(t *testing.T) {
 				stderr = newFakeFile()
 			)
 			if len(args) == 0 {
-				if _, writeErr := stdin.Write(input); writeErr != nil {
-					t.Fatal(writeErr)
-				}
+				stdin = newFakeFile(input...)
 			}
 			ctx := context.Background()
 			ctx, cancel := context.WithCancel(ctx)
@@ -132,16 +195,9 @@ func TestRun(t *testing.T) {
 			status := run(
 				ctx, args, stdin, stdout, stderr, openInput,
 			)
-			got, err := io.ReadAll(stdout)
-			if err != nil {
-				t.Fatal(err)
-			}
+			got := stdout.Bytes()
 			if test.wantOutput != "" {
-				gotFromStderr, err := io.ReadAll(stderr)
-				if err != nil {
-					t.Fatal(err)
-				}
-				got = append(got, gotFromStderr...)
+				got = append(got, stderr.Bytes()...)
 				if !bytes.Equal(got, []byte(test.wantOutput)) {
 					t.Errorf(
 						filesCmpErr,
@@ -185,6 +241,9 @@ func TestRunWriteSamePathTwiceReturnsOriginalContents(t *testing.T) {
 		name string, flag int, perm os.FileMode,
 	) (file, error) {
 		if f, ok := opened[name]; ok {
+			if err := f.reopen(); err != nil {
+				return nil, err
+			}
 			return f, nil
 		}
 		f := newFakeFile(input...)
@@ -209,8 +268,8 @@ func TestRunWriteSamePathTwiceReturnsOriginalContents(t *testing.T) {
 	if !ok {
 		t.Fatalf("path %q was not opened", mockPath)
 	}
-	if !bytes.Equal(got.contents.Bytes(), input) {
-		t.Errorf(filesCmpErr, got.contents.Bytes(), input)
+	if !bytes.Equal(got.Bytes(), input) {
+		t.Errorf(filesCmpErr, got.Bytes(), input)
 	}
 }
 

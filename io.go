@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-// file represents *os.File and is used wherever *os.File is used.
+// file models the subset of *os.File used by the CLI.
 type file interface {
 	Read(b []byte) (int, error)
 	Write(b []byte) (int, error)
@@ -18,17 +18,17 @@ type file interface {
 	Close() error
 }
 
-// osOpenFile is a type of os.OpenFile.
+// osOpenFile matches the signature of os.OpenFile.
 type osOpenFile func(name string, flag int, perm os.FileMode) (file, error)
 
-// openFile is a wrapper around os.OpenFile.
+// openFile wraps os.OpenFile for testing.
 var openFile osOpenFile = func(
 	name string, flag int, perm os.FileMode,
 ) (file, error) {
 	return os.OpenFile(name, flag, perm)
 }
 
-// config represents parsed CLI arguments.
+// config holds parsed CLI arguments.
 type config struct {
 	version bool
 	write   bool
@@ -37,9 +37,9 @@ type config struct {
 
 const usageText = "usage: gouse [-v] [-w] [file paths...]"
 
-// parseArgs accepts args, parses them and returns config, parsing message and
-// err. flag.ErrHelp is a special error which is returned on -h, -help, --help
-// and when misused.
+// parseArgs parses CLI arguments and returns the config, the usage text, and
+// any parse error. It returns flag.ErrHelp for -h, -help, --help, and related
+// help-triggering misuse.
 func parseArgs(args []string) (*config, string, error) {
 	c := new(config)
 	flags := flag.NewFlagSet("", flag.ContinueOnError)
@@ -51,34 +51,34 @@ func parseArgs(args []string) (*config, string, error) {
 	if err := flags.Parse(args); err != nil {
 		return nil, out.String(), err
 	}
-	// flags.Args must be called after flags.Parse.
+	// Call flags.Args only after flags.Parse.
 	c.paths = flags.Args()
 	return c, out.String(), nil
 }
 
-// toggleFile takes code from in, toggles it, deletes contents of out if it’s
-// in, and writes the toggled version to out.
+// toggleFile reads from in, toggles the code, replaces out when it is the same
+// file, and writes the toggled bytes.
 func toggleFile(ctx context.Context, in, out file) error {
 	code, err := io.ReadAll(in)
 	if err != nil {
-		return fmt.Errorf("toggleFile: in io.ReadAll: %v", err)
+		return fmt.Errorf("toggleFile: in io.ReadAll: %w", err)
 	}
 	toggled, err := toggle(ctx, code)
 	if err != nil {
-		return fmt.Errorf("toggleFile: %v", err)
+		return fmt.Errorf("toggleFile: %w", err)
 	}
 	if out == in {
 		if _, err := out.Seek(0, io.SeekStart); err != nil {
-			return fmt.Errorf("toggleFile: in *File.Seek: %v", err)
+			return fmt.Errorf("toggleFile: in file.Seek: %w", err)
 		}
 		if err := out.Truncate(0); err != nil {
 			return fmt.Errorf(
-				"toggleFile: in *File.Truncate: %v", err,
+				"toggleFile: in file.Truncate: %w", err,
 			)
 		}
 	}
 	if _, err := out.Write(toggled); err != nil {
-		return fmt.Errorf("toggleFile: in *File.Write: %v", err)
+		return fmt.Errorf("toggleFile: in file.Write: %w", err)
 	}
 	return nil
 }

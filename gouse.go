@@ -1,18 +1,18 @@
-// gouse toggles ‘declared and not used’ errors by using idiomatic
-// _ = notUsedVar and leaving a TODO comment.
+// gouse toggles ‘declared and not used’ errors by inserting the idiomatic
+// `_ = notUsedVar` form and leaving a TODO comment.
 //
 // Usage:
 //
 //	gouse [-v] [-w] [file paths...]
 //
-// By default, gouse accepts code from stdin or from a file provided as a path
-// argument and writes the toggled version to stdout. ‘-w’ flag writes the
-// result back to the file. If multiple paths provided, ‘-w’ flag is required.
+// By default, gouse reads code from stdin or from a file path argument and
+// writes the toggled version to stdout. The ‘-w’ flag writes the result back to
+// the file. If multiple paths are provided, ‘-w’ is required.
 //
-// First it tries to remove previously created fake usages. If there is nothing
-// to remove, it tries to build an input and checks the build stdout for
-// ‘declared and not used’ errors. If there is any, it creates fake usages for
-// unused variables from the errors.
+// gouse first removes previously created fake usages. If there is nothing to
+// remove, it builds the input and checks the build output for ‘declared and not
+// used’ errors. If there are any, it creates fake usages for the reported
+// unused variables.
 //
 // Examples
 //
@@ -77,7 +77,7 @@ func main() {
 	))
 }
 
-// run manages logging, parses arguments and toggles the passed files.
+// run parses arguments, manages logging, and toggles the requested input.
 func run(
 	ctx context.Context,
 	args []string,
@@ -92,12 +92,12 @@ func run(
 	infoLog := log.New(stderr, "", logFlag)
 
 	conf, msg, err := parseArgs(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		infoLog.Print(msg)
 		return 2
 	} else if err != nil {
 		errorLog.Print(
-			fmt.Errorf("run: in parseArgs: %s\n%s", err, msg),
+			fmt.Errorf("run: in parseArgs: %w\n%s", err, msg),
 		)
 		return 1
 	}

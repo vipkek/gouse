@@ -15,9 +15,11 @@ const (
 	fakeUsageSuffix = " /* TODO: gouse */"
 	fakeUsagePrefix = "; _ ="
 
-	noProviderErrorRegexpSuffix = "no required module provides package"
-	commentPrefix               = "// "
-	notUsedErrorRegexpSuffix    = "declared and not used"
+	// These suffixes match current `go build` diagnostics. They are
+	// heuristics, not a stable API.
+	noProviderErrorSuffix = "no required module provides package"
+	commentPrefix         = "// "
+	notUsedErrorSuffix    = "declared and not used"
 )
 
 var (
@@ -28,14 +30,14 @@ var (
 	fakeUsageAfterGofmt = regexp.MustCompile(
 		`\s*_\s*=\s*[_\pL][_\pL\pN]*\s*` + escapedFakeUsageSuffix,
 	)
-	notUsedErrorRegexpSuffixWithColon = notUsedErrorRegexpSuffix + ":"
+	notUsedErrorWithColonSuffix = notUsedErrorSuffix + ":"
 )
 
-// toggle returns toggled code. First it tries to remove previously created fake
-// usages. If there is nothing to remove, it creates them.
+// toggle removes existing fake usages or inserts new ones based on build
+// diagnostics.
 func toggle(ctx context.Context, code []byte) ([]byte, error) {
-	// fakeUsage must be before fakeUsageAfterGofmt because it also removes
-	// the leading ‘;’.
+	// fakeUsage must run before fakeUsageAfterGofmt because it also removes the
+	// leading ‘;’.
 	if fakeUsage.Match(code) {
 		return fakeUsage.ReplaceAll(code, []byte("")), nil
 	}
@@ -44,13 +46,13 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	}
 
 	lines := bytes.Split(code, []byte("\n"))
-	// Check for problematic imports and comment them out if any, storing
-	// commented out lines numbers to commentedLinesNums.
+	// Comment out imports that fail with a missing module diagnostic and store
+	// their line numbers.
 	importsWithoutProviderInfo, err := getSymbolsInfoFromBuildErrors(
-		ctx, code, noProviderErrorRegexpSuffix,
+		ctx, code, noProviderErrorSuffix,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("toggle: %v", err)
+		return nil, fmt.Errorf("toggle: %w", err)
 	}
 	var commentedLinesNums []int
 	for _, info := range importsWithoutProviderInfo {
@@ -58,15 +60,15 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		*l = append([]byte(commentPrefix), *l...)
 		commentedLinesNums = append(commentedLinesNums, info.lineNum)
 	}
-	// Check for ‘declared and not used’ errors and create fake usages for
-	// them if any.
+	// Get ‘declared and not used’ diagnostics and insert fake usages for the
+	// reported names.
 	notUsedVarsInfo, err := getSymbolsInfoFromBuildErrors(
 		ctx,
 		bytes.Join(lines, []byte("\n")),
-		notUsedErrorRegexpSuffixWithColon,
+		notUsedErrorWithColonSuffix,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("toggle: %v", err)
+		return nil, fmt.Errorf("toggle: %w", err)
 	}
 	for _, info := range notUsedVarsInfo {
 		l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
@@ -74,7 +76,7 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 			fakeUsagePrefix+info.name+fakeUsageSuffix,
 		))
 	}
-	// Un-comment commented out lines.
+	// Restore the commented imports.
 	for _, line := range commentedLinesNums {
 		l := &lines[line]
 		uncommentedLine := []rune(
@@ -122,8 +124,7 @@ func getSwitchClauseLineNum(lines [][]byte, switchLineNum int) (int, bool) {
 	return 0, false
 }
 
-// symbolInfo represents name and line number of symbols (variables, functions,
-// imports, etc.) from build errors.
+// symbolInfo describes a symbol reported by a matching build diagnostic.
 type symbolInfo struct {
 	name    string
 	lineNum int
@@ -136,92 +137,78 @@ const (
 )
 
 var (
-	// symbolPositionInError catches the Go file extension and the position
-	// of the symbol from the error with the trailing space symbol.
+	// symbolPositionInError matches the ‘.go:line:column: ’ segment in a build
+	// error.
 	//
-	// Example
+	// Example:
 	//
 	//	Given a build error ‘.../main[.go:4:2: ]<text of an error>’,
-	//	the catch group is denoted with ‘[]’.
+	//	the matched range is denoted with ‘[]’.
 	symbolPositionInError = regexp.MustCompile(
 		regexp.QuoteMeta(goFileExt) + `:\d+:\d+: `,
 	)
 )
 
-// getSymbolsInfoFromBuildErrors tries to build code and checks a build stdout
-// for errors caught by r. If any, it returns a slice of structs with a line
-// and a name of every caught symbol.
+// getSymbolsInfoFromBuildErrors builds code and returns the symbols reported by
+// diagnostics that match the requested suffix.
 func getSymbolsInfoFromBuildErrors(
 	ctx context.Context, code []byte, suffix string,
 ) ([]symbolInfo, error) {
-	select {
-	case <-ctx.Done():
-		return nil, nil
-	default:
-		const thisName = "getSymbolsInfoFromBuildErrors"
-
-		td, err := os.MkdirTemp(os.TempDir(), "gouse")
-		if err != nil {
-			format := thisName + ": in os.MkdirTemp: %v"
-			return nil, fmt.Errorf(format, err)
-		}
-		defer os.RemoveAll(td)
-		if err := ctx.Err(); err != nil {
-			return nil, nil
-		}
-		tf, err := os.CreateTemp(td, "*"+goFileExt)
-		if err != nil {
-			format := thisName + ": in os.CreateTemp: %v"
-			return nil, fmt.Errorf(format, err)
-		}
-		defer tf.Close()
-		if err := ctx.Err(); err != nil {
-			return nil, nil
-		}
-		if _, err := tf.Write(code); err != nil {
-			format := thisName + ": in File.Write: %v"
-			return nil, fmt.Errorf(format, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return nil, nil
-		}
-		goBin, err := exec.LookPath("go")
-		if err != nil {
-			format := thisName + ": in exec.LookPath: %v"
-			return nil, fmt.Errorf(format, err)
-		}
-		boutput, err := exec.CommandContext(
-			ctx,
-			goBin, "build", "-o", os.DevNull, tf.Name(),
-		).CombinedOutput()
-		if err != nil && ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err == nil {
-			return nil, nil
-		}
-		berrors := strings.Split(string(boutput), "\n")
-		var info []symbolInfo
-		for _, e := range berrors {
-			name, ok := getSymbolNameFromBuildError(e, suffix)
-			if !ok {
-				continue
-			}
-			lineNum, err := strconv.Atoi(strings.Split(
-				symbolPositionInError.FindString(e), ":",
-			)[lineNumIndex])
-			if err != nil {
-				format := thisName + ": in strconv.Atoi: %v"
-				return nil, fmt.Errorf(format, err)
-			}
-			info = append(info, symbolInfo{
-				name: name,
-				// -1 is an adjustment for 0-based count.
-				lineNum: lineNum - 1,
-			})
-		}
-		return info, nil
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+
+	td, err := os.MkdirTemp(os.TempDir(), "gouse")
+	if err != nil {
+		return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors in os.MkdirTemp: %w", err)
+	}
+	defer os.RemoveAll(td)
+
+	tf, err := os.CreateTemp(td, "*"+goFileExt)
+	if err != nil {
+		return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors: in os.CreateTemp: %w", err)
+	}
+	defer tf.Close()
+
+	if _, err := tf.Write(code); err != nil {
+		return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors: in temp file write: %w", err)
+	}
+
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors: in exec.LookPath: %w", err)
+	}
+	boutput, err := exec.CommandContext(
+		ctx,
+		goBin, "build", "-o", os.DevNull, tf.Name(),
+	).CombinedOutput()
+	if err != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err == nil {
+		return nil, nil
+	}
+
+	berrors := strings.Split(string(boutput), "\n")
+	var info []symbolInfo
+	for _, e := range berrors {
+		name, ok := getSymbolNameFromBuildError(e, suffix)
+		if !ok {
+			continue
+		}
+		lineNum, err := strconv.Atoi(strings.Split(
+			symbolPositionInError.FindString(e), ":",
+		)[lineNumIndex])
+		if err != nil {
+			return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors in strconv.Atoi: %w", err)
+		}
+		info = append(info, symbolInfo{
+			name: name,
+			// Convert the reported line number to a 0-based index.
+			lineNum: lineNum - 1,
+		})
+	}
+	return info, nil
 }
 
 func getSymbolNameFromBuildError(e, suffix string) (string, bool) {
@@ -234,13 +221,13 @@ func getSymbolNameFromBuildError(e, suffix string) (string, bool) {
 	if name, ok := strings.CutPrefix(afterMatch, suffix); ok {
 		return name, true
 	}
-	if suffix != notUsedErrorRegexpSuffixWithColon {
+	if suffix != notUsedErrorWithColonSuffix {
 		return "", false
 	}
 
 	name, ok := strings.CutSuffix(
 		afterMatch,
-		notUsedErrorRegexpSuffix,
+		notUsedErrorSuffix,
 	)
 	if !ok {
 		return "", false
