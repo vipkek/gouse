@@ -19,7 +19,9 @@ const filesCmpErr = `
 type fakeFile struct {
 	file
 
-	contents *bytes.Buffer
+	contents   *bytes.Buffer
+	closeCount int
+	closed     bool
 }
 
 func newFakeFile(buf ...byte) *fakeFile {
@@ -51,6 +53,11 @@ func (f *fakeFile) Truncate(size int64) error {
 }
 
 func (f *fakeFile) Close() error {
+	if f.closed {
+		return nil
+	}
+	f.closed = true
+	f.closeCount++
 	return nil
 }
 
@@ -180,4 +187,102 @@ func TestRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRunClosesFilesPerIteration(t *testing.T) {
+	input, err := os.ReadFile(filepath.Join("testdata", "not_used.input"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		var opened []*fakeFile
+		openInput := func(
+			name string, flag int, perm os.FileMode,
+		) (file, error) {
+			if len(opened) > 0 {
+				prev := opened[len(opened)-1]
+				if prev.closeCount != 1 {
+					t.Fatalf(
+						"previous file not closed before opening %s",
+						name,
+					)
+				}
+			}
+			f := newFakeFile(input...)
+			opened = append(opened, f)
+			return f, nil
+		}
+
+		status := run(
+			context.Background(),
+			[]string{"-w", "a.go", "b.go", "c.go"},
+			newFakeFile(),
+			newFakeFile(),
+			newFakeFile(),
+			openInput,
+		)
+
+		if status != 0 {
+			t.Fatalf("got: %d, want: 0", status)
+		}
+		if len(opened) != 3 {
+			t.Fatalf("got: %d opened files, want: 3", len(opened))
+		}
+		for i, f := range opened {
+			if f.closeCount != 1 {
+				t.Errorf(
+					"file %d close count got: %d, want: 1",
+					i,
+					f.closeCount,
+				)
+			}
+		}
+	})
+
+	t.Run("later open failure", func(t *testing.T) {
+		t.Parallel()
+
+		first := newFakeFile(input...)
+		openCalls := 0
+		openInput := func(
+			name string, flag int, perm os.FileMode,
+		) (file, error) {
+			openCalls++
+			if openCalls == 1 {
+				return first, nil
+			}
+			if first.closeCount != 1 {
+				t.Fatalf(
+					"first file not closed before failing on %s",
+					name,
+				)
+			}
+			return nil, os.ErrNotExist
+		}
+
+		status := run(
+			context.Background(),
+			[]string{"-w", "a.go", "b.go"},
+			newFakeFile(),
+			newFakeFile(),
+			newFakeFile(),
+			openInput,
+		)
+
+		if status != 1 {
+			t.Fatalf("got: %d, want: 1", status)
+		}
+		if openCalls != 2 {
+			t.Fatalf("got: %d open calls, want: 2", openCalls)
+		}
+		if first.closeCount != 1 {
+			t.Fatalf(
+				"first file close count got: %d, want: 1",
+				first.closeCount,
+			)
+		}
+	})
 }

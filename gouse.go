@@ -54,7 +54,7 @@ import (
 const (
 	errorLogPrefix = "error: "
 	logFlag        = 0
-	currentVersion = "1.5.0"
+	currentVersion = "1.5.1"
 )
 
 var (
@@ -123,26 +123,42 @@ func run(
 		return 1
 	}
 	for _, p := range conf.paths {
-		var in file
-		var out *file
-		var access int
-		if conf.write {
-			out = &in
-			access = os.O_RDWR
-		} else {
-			out = &stdout
-			access = os.O_RDONLY
-		}
-		in, err := openFile(p, access, os.ModeExclusive)
-		if err != nil {
-			errorLog.Print(err)
-			return 1
-		}
-		defer in.Close()
-		if err := toggleFile(ctx, in, *out); err != nil {
+		if err := processPath(
+			ctx,
+			p,
+			conf.write,
+			stdout,
+			openFile,
+		); err != nil {
 			errorLog.Print(err)
 			return 1
 		}
 	}
 	return 0
+}
+
+func processPath(
+	ctx context.Context,
+	path string,
+	write bool,
+	stdout file,
+	openFile osOpenFile,
+) error {
+	var in file
+	var out *file
+	var access int
+	if write {
+		out = &in
+		access = os.O_RDWR
+	} else {
+		out = &stdout
+		access = os.O_RDONLY
+	}
+	var err error
+	in, err = openFile(path, access, os.ModeExclusive)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	return toggleFile(ctx, in, *out)
 }
