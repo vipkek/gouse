@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
 	"os/exec"
 	"regexp"
@@ -15,11 +19,13 @@ const (
 	fakeUsageSuffix = " /* TODO: gouse */"
 	fakeUsagePrefix = "; _ ="
 
-	// These suffixes match current `go build` diagnostics. They are
+	// These pre-/suffixes match current `go build` diagnostics. They are
 	// heuristics, not a stable API.
-	noProviderErrorSuffix = "no required module provides package"
-	commentPrefix         = "// "
-	notUsedErrorSuffix    = "declared and not used"
+	noProviderErrorSuffix              = "no required module provides package"
+	commentPrefix                      = "// "
+	defaultNotUsedErrorWithColonSuffix = "declared and not used: "
+
+	notUsedErrorProbeName              = "_gouseProbeUnused"
 )
 
 var (
@@ -30,7 +36,15 @@ var (
 	fakeUsageAfterGofmt = regexp.MustCompile(
 		`\s*_\s*=\s*[_\pL][_\pL\pN]*\s*` + escapedFakeUsageSuffix,
 	)
-	notUsedErrorWithColonSuffix = notUsedErrorSuffix + ":"
+	detectedNotUsedErrorWithColonSuffix = detectNotUsedErrorWithColonSuffix()
+	notUsedErrorWithColonSuffix         = strings.TrimSuffix(
+		detectedNotUsedErrorWithColonSuffix,
+		" ",
+	)
+	notUsedErrorSuffix = strings.TrimSuffix(
+		detectedNotUsedErrorWithColonSuffix,
+		": ",
+	)
 )
 
 // toggle removes existing fake usages or inserts new ones based on build
@@ -219,6 +233,9 @@ func getSymbolNameFromBuildError(e, suffix string) (string, bool) {
 	afterMatch := e[match[matchEndIndex]:]
 
 	if name, ok := strings.CutPrefix(afterMatch, suffix); ok {
+		if name == "" {
+			return "", false
+		}
 		return name, true
 	}
 	if suffix != notUsedErrorWithColonSuffix {
@@ -237,4 +254,50 @@ func getSymbolNameFromBuildError(e, suffix string) (string, bool) {
 		return "", false
 	}
 	return " " + name, true
+}
+
+func detectNotUsedErrorWithColonSuffix() string {
+	const source = "package p\n\nfunc f() {\n\tvar " +
+		notUsedErrorProbeName + " int\n}\n"
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", source, 0)
+	if err != nil {
+		return defaultNotUsedErrorWithColonSuffix
+	}
+
+	detected := ""
+	conf := types.Config{
+		Error: func(err error) {
+			if detected != "" {
+				return
+			}
+			typeErr, ok := err.(types.Error)
+			if !ok {
+				return
+			}
+			prefix, ok := extractNotUsedErrorWithColonSuffix(
+				typeErr.Msg,
+				notUsedErrorProbeName,
+			)
+			if ok {
+				detected = prefix
+			}
+		},
+	}
+	_, _ = conf.Check("p", fset, []*ast.File{file}, nil)
+	if detected == "" {
+		return defaultNotUsedErrorWithColonSuffix
+	}
+	return detected
+}
+
+func extractNotUsedErrorWithColonSuffix(
+	msg, probeName string,
+) (string, bool) {
+	prefix, ok := strings.CutSuffix(msg, probeName)
+	if !ok || !strings.HasSuffix(prefix, ": ") {
+		return "", false
+	}
+	return prefix, true
 }

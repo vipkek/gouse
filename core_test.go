@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -147,4 +148,62 @@ func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 			t.Fatalf("got: %v, want: %v", err, context.Canceled)
 		}
 	})
+}
+
+func TestExtractNotUsedErrorWithColonSuffix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		msg       string
+		probeName string
+		want      string
+		wantOK    bool
+	}{
+		{
+			name:      "valid",
+			msg:       "declared and not used: _gouseProbeUnused",
+			probeName: "_gouseProbeUnused",
+			want:      "declared and not used: ",
+			wantOK:    true,
+		},
+		{
+			name:      "wrong trailing name",
+			msg:       "declared and not used: _otherProbe",
+			probeName: "_gouseProbeUnused",
+		},
+		{
+			name:      "missing colon space",
+			msg:       "declared and not used:_gouseProbeUnused",
+			probeName: "_gouseProbeUnused",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, gotOK := extractNotUsedErrorWithColonSuffix(
+				tt.msg,
+				tt.probeName,
+			)
+			if gotOK != tt.wantOK {
+				t.Fatalf("got: %t, want: %t", gotOK, tt.wantOK)
+			}
+			if got != tt.want {
+				t.Fatalf("got: %q, want: %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectNotUsedErrorWithColonSuffix(t *testing.T) {
+	t.Parallel()
+
+	got := detectNotUsedErrorWithColonSuffix()
+	if got == "" {
+		t.Fatal("got: empty string, want: non-empty")
+	}
+	if !strings.HasSuffix(got, ": ") {
+		t.Fatalf("got: %q, want suffix %q", got, ": ")
+	}
 }
