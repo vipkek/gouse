@@ -227,6 +227,91 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRunWriteSinglePathRewritesFile(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile(filepath.Join("testdata", "not_used.input"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "not_used.golden"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.CreateTemp(t.TempDir(), "*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempPath := f.Name()
+	if _, err := f.Write(input); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		openCalls int
+		gotName   string
+		gotFlag   int
+		gotPerm   os.FileMode
+	)
+	openInput := func(
+		name string, flag int, perm os.FileMode,
+	) (file, error) {
+		openCalls++
+		gotName = name
+		gotFlag = flag
+		gotPerm = perm
+		return os.OpenFile(name, flag, perm)
+	}
+
+	stdout := newFakeFile()
+	stderr := newFakeFile()
+	status := run(
+		context.Background(),
+		[]string{"-w", tempPath},
+		newFakeFile(),
+		stdout,
+		stderr,
+		openInput,
+	)
+
+	if status != 0 {
+		t.Fatalf("got: %d, want: 0", status)
+	}
+	if openCalls != 1 {
+		t.Fatalf("open calls got: %d, want: 1", openCalls)
+	}
+	if gotName != tempPath {
+		t.Fatalf("open name got: %q, want: %q", gotName, tempPath)
+	}
+	if gotFlag != os.O_RDWR {
+		t.Fatalf("open flag got: %d, want: %d", gotFlag, os.O_RDWR)
+	}
+	if gotPerm != os.ModeExclusive {
+		t.Fatalf(
+			"open perm got: %v, want: %v",
+			gotPerm,
+			os.ModeExclusive,
+		)
+	}
+	got, err := os.ReadFile(tempPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf(filesCmpErr, got, want)
+	}
+	if got := stdout.Bytes(); len(got) != 0 {
+		t.Fatalf("stdout got: %q, want: empty", got)
+	}
+	if got := stderr.Bytes(); len(got) != 0 {
+		t.Fatalf("stderr got: %q, want: empty", got)
+	}
+}
+
 func TestRunWriteSamePathTwiceReturnsOriginalContents(t *testing.T) {
 	t.Parallel()
 

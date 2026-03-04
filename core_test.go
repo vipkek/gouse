@@ -106,6 +106,32 @@ const getSymbolsInfoFromBuildErrorsInput = `
 	}
 `
 
+type fakeBuildTempFile struct {
+	name       string
+	writeErr   error
+	closeErr   error
+	closeCount int
+}
+
+func (f *fakeBuildTempFile) Write(b []byte) (int, error) {
+	if f.writeErr != nil {
+		return 0, f.writeErr
+	}
+	return len(b), nil
+}
+
+func (f *fakeBuildTempFile) Name() string {
+	if f.name == "" {
+		return "temp.go"
+	}
+	return f.name
+}
+
+func (f *fakeBuildTempFile) Close() error {
+	f.closeCount++
+	return f.closeErr
+}
+
 func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +174,35 @@ func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 			t.Fatalf("got: %v, want: %v", err, context.Canceled)
 		}
 	})
+}
+
+func TestGetSymbolsInfoFromBuildErrorsWithTempFactoryWriteFailure(t *testing.T) {
+	errTempWrite := errors.New("temp write failed")
+	tf := &fakeBuildTempFile{writeErr: errTempWrite}
+
+	got, err := getSymbolsInfoFromBuildErrorsWithTempFactory(
+		context.Background(),
+		[]byte("package p\n"),
+		notUsedErrorWithColonSuffix,
+		func(dir, pattern string) (buildTempFile, error) {
+			return tf, nil
+		},
+	)
+	if got != nil {
+		t.Fatalf("got: %v, want: nil", got)
+	}
+	if !errors.Is(err, errTempWrite) {
+		t.Fatalf("got: %v, want: %v", err, errTempWrite)
+	}
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"getSymbolsInfoFromBuildErrors: in temp file write",
+	) {
+		t.Fatalf("got: %v, want temp file write context", err)
+	}
+	if tf.closeCount != 1 {
+		t.Fatalf("close count got: %d, want: 1", tf.closeCount)
+	}
 }
 
 func TestExtractNotUsedErrorWithColonSuffix(t *testing.T) {

@@ -25,7 +25,7 @@ const (
 	commentPrefix                      = "// "
 	defaultNotUsedErrorWithColonSuffix = "declared and not used: "
 
-	notUsedErrorProbeName              = "_gouseProbeUnused"
+	notUsedErrorProbeName = "_gouseProbeUnused"
 )
 
 var (
@@ -144,6 +144,13 @@ type symbolInfo struct {
 	lineNum int
 }
 
+// buildTempFile models the subset of *os.File used by build-analysis temp files.
+type buildTempFile interface {
+	Write([]byte) (int, error)
+	Name() string
+	Close() error
+}
+
 const (
 	goFileExt     = ".go"
 	lineNumIndex  = 1
@@ -168,6 +175,24 @@ var (
 func getSymbolsInfoFromBuildErrors(
 	ctx context.Context, code []byte, suffix string,
 ) ([]symbolInfo, error) {
+	return getSymbolsInfoFromBuildErrorsWithTempFactory(
+		ctx,
+		code,
+		suffix,
+		func(dir, pattern string) (buildTempFile, error) {
+			return os.CreateTemp(dir, pattern)
+		},
+	)
+}
+
+// getSymbolsInfoFromBuildErrorsWithTempFactory is like
+// getSymbolsInfoFromBuildErrors but lets tests control temp-file creation.
+func getSymbolsInfoFromBuildErrorsWithTempFactory(
+	ctx context.Context,
+	code []byte,
+	suffix string,
+	createTemp func(dir, pattern string) (buildTempFile, error),
+) ([]symbolInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -178,7 +203,7 @@ func getSymbolsInfoFromBuildErrors(
 	}
 	defer os.RemoveAll(td)
 
-	tf, err := os.CreateTemp(td, "*"+goFileExt)
+	tf, err := createTemp(td, "*"+goFileExt)
 	if err != nil {
 		return nil, fmt.Errorf("getSymbolsInfoFromBuildErrors: in os.CreateTemp: %w", err)
 	}
