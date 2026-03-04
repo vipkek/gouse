@@ -9,6 +9,8 @@ import (
 )
 
 func TestToggle(t *testing.T) {
+	t.Parallel()
+
 	inputsPaths, err := filepath.Glob(filepath.Join("testdata", "*.input"))
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -43,6 +45,8 @@ func TestToggle(t *testing.T) {
 }
 
 func TestToggleCRLFInsertion(t *testing.T) {
+	t.Parallel()
+
 	t.Run("simple insertion", func(t *testing.T) {
 		t.Parallel()
 		input := []byte(
@@ -103,6 +107,8 @@ const getSymbolsInfoFromBuildErrorsInput = `
 `
 
 func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	t.Cleanup(cancel)

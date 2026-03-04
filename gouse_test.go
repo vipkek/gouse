@@ -62,6 +62,8 @@ func (f *fakeFile) Close() error {
 }
 
 func TestRun(t *testing.T) {
+	t.Parallel()
+
 	input, err := os.ReadFile(filepath.Join("testdata", "not_used.input"))
 	var openInput osOpenFile = func(
 		name string, flag int, perm os.FileMode,
@@ -131,8 +133,8 @@ func TestRun(t *testing.T) {
 				stderr = newFakeFile()
 			)
 			if len(args) == 0 {
-				if _, err = stdin.Write(input); err != nil {
-					t.Fatal(err)
+				if _, writeErr := stdin.Write(input); writeErr != nil {
+					t.Fatal(writeErr)
 				}
 			}
 			ctx := context.Background()
@@ -190,6 +192,8 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunClosesFilesPerIteration(t *testing.T) {
+	t.Parallel()
+
 	input, err := os.ReadFile(filepath.Join("testdata", "not_used.input"))
 	if err != nil {
 		t.Fatal(err)

@@ -9,6 +9,8 @@ import (
 )
 
 func TestParseArgs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		args   []string
 		conf   config
