@@ -31,7 +31,7 @@ var (
 	notUsedErrorRegexpSuffixWithColon = notUsedErrorRegexpSuffix + ":"
 )
 
-// toggle returns toggled code. First it tries to remove previosly created fake
+// toggle returns toggled code. First it tries to remove previously created fake
 // usages. If there is nothing to remove, it creates them.
 func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	// fakeUsage must be before fakeUsageAfterGofmt because it also removes
@@ -149,8 +149,8 @@ var (
 )
 
 // getSymbolsInfoFromBuildErrors tries to build code and checks a build stdout
-// for errors catched by r. If any, it returns a slice of structs with a line
-// and a name of every catched symbol.
+// for errors caught by r. If any, it returns a slice of structs with a line
+// and a name of every caught symbol.
 func getSymbolsInfoFromBuildErrors(
 	ctx context.Context, code []byte, suffix string,
 ) ([]symbolInfo, error) {
@@ -166,19 +166,33 @@ func getSymbolsInfoFromBuildErrors(
 			return nil, fmt.Errorf(format, err)
 		}
 		defer os.RemoveAll(td)
+		if err := ctx.Err(); err != nil {
+			return nil, nil
+		}
 		tf, err := os.CreateTemp(td, "*"+goFileExt)
 		if err != nil {
 			format := thisName + ": in os.CreateTemp: %v"
 			return nil, fmt.Errorf(format, err)
 		}
 		defer tf.Close()
-		tf.Write(code)
 		if err := ctx.Err(); err != nil {
 			return nil, nil
 		}
+		if _, err := tf.Write(code); err != nil {
+			format := thisName + ": in File.Write: %v"
+			return nil, fmt.Errorf(format, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, nil
+		}
+		goBin, err := exec.LookPath("go")
+		if err != nil {
+			format := thisName + ": in exec.LookPath: %v"
+			return nil, fmt.Errorf(format, err)
+		}
 		boutput, err := exec.CommandContext(
 			ctx,
-			"go", "build", "-o", os.DevNull, tf.Name(),
+			goBin, "build", "-o", os.DevNull, tf.Name(),
 		).CombinedOutput()
 		if err != nil && ctx.Err() != nil {
 			return nil, ctx.Err()

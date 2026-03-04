@@ -25,11 +25,7 @@ type fakeFile struct {
 }
 
 func newFakeFile(buf ...byte) *fakeFile {
-	newBuf := bytes.NewBuffer(buf)
-	if buf == nil {
-		newBuf = new(bytes.Buffer)
-	}
-	f := fakeFile{contents: newBuf}
+	f := fakeFile{contents: bytes.NewBuffer(buf)}
 	return &f
 }
 
@@ -114,13 +110,6 @@ func TestRun(t *testing.T) {
 			wantFilename: "not_used.golden",
 			wantStatus:   0,
 		},
-		{
-			// Double processing of the same file must return to
-			// exact previous state.
-			args:         []string{"-w", mockPath, mockPath},
-			wantFilename: "not_used.input",
-			wantStatus:   0,
-		},
 	}
 	for _, tt := range tests {
 		test := tt
@@ -147,38 +136,29 @@ func TestRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mustWrite := len(args) > 1 && args[0] == "-w"
-			if mustWrite {
-				got = input
-			} else {
-				wantOutput := test.wantOutput
+			if test.wantOutput != "" {
 				gotFromStderr, err := io.ReadAll(stderr)
 				if err != nil {
 					t.Fatal(err)
 				}
 				got = append(got, gotFromStderr...)
-				if len(wantOutput) > 0 {
-					if bytes.Equal(
-						got, []byte(wantOutput),
-					) {
-						return
-					} else {
-						t.Errorf(
-							filesCmpErr,
-							got,
-							wantOutput,
-						)
-					}
+				if !bytes.Equal(got, []byte(test.wantOutput)) {
+					t.Errorf(
+						filesCmpErr,
+						got,
+						test.wantOutput,
+					)
 				}
-			}
-			want, err := os.ReadFile(
-				filepath.Join("testdata", test.wantFilename),
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Errorf(filesCmpErr, got, want)
+			} else {
+				want, err := os.ReadFile(
+					filepath.Join("testdata", test.wantFilename),
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Errorf(filesCmpErr, got, want)
+				}
 			}
 			if test.wantStatus != status {
 				t.Errorf(
@@ -188,6 +168,49 @@ func TestRun(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestRunWriteSamePathTwiceReturnsOriginalContents(t *testing.T) {
+	t.Parallel()
+
+	input, err := os.ReadFile(filepath.Join("testdata", "not_used.input"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const mockPath = "filename"
+	opened := map[string]*fakeFile{}
+	openInput := func(
+		name string, flag int, perm os.FileMode,
+	) (file, error) {
+		if f, ok := opened[name]; ok {
+			return f, nil
+		}
+		f := newFakeFile(input...)
+		opened[name] = f
+		return f, nil
+	}
+
+	status := run(
+		context.Background(),
+		[]string{"-w", mockPath, mockPath},
+		newFakeFile(),
+		newFakeFile(),
+		newFakeFile(),
+		openInput,
+	)
+
+	if status != 0 {
+		t.Fatalf("got: %d, want: 0", status)
+	}
+
+	got, ok := opened[mockPath]
+	if !ok {
+		t.Fatalf("path %q was not opened", mockPath)
+	}
+	if !bytes.Equal(got.contents.Bytes(), input) {
+		t.Errorf(filesCmpErr, got.contents.Bytes(), input)
 	}
 }
 
