@@ -54,7 +54,7 @@ import (
 const (
 	errorLogPrefix = "error: "
 	logFlag        = 0
-	currentVersion = "1.4.0"
+	currentVersion = "1.4.1"
 )
 
 var (
@@ -85,7 +85,7 @@ func run(
 
 	openFile osOpenFile,
 ) int {
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
 	errorLog := log.New(stderr, errorLogPrefix, logFlag)

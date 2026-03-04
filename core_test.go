@@ -91,4 +91,22 @@ func TestGetSymbolsInfoFromBuildErrors(t *testing.T) {
 			}
 		}
 	})
+	t.Run("pre-canceled context", func(t *testing.T) {
+		t.Parallel()
+		canceledCtx, cancel := context.WithCancel(
+			context.Background(),
+		)
+		cancel()
+		got, err := getSymbolsInfoFromBuildErrors(
+			canceledCtx,
+			[]byte("package p\n"),
+			notUsedErrorRegexpSuffixWithColon,
+		)
+		if err != nil {
+			t.Fatalf("got: %v, want: nil", err)
+		}
+		if got != nil {
+			t.Fatalf("got: %v, want: nil", got)
+		}
+	})
 }

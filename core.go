@@ -165,9 +165,16 @@ func getSymbolsInfoFromBuildErrors(
 		}
 		defer tf.Close()
 		tf.Write(code)
-		boutput, err := exec.Command(
+		if err := ctx.Err(); err != nil {
+			return nil, nil
+		}
+		boutput, err := exec.CommandContext(
+			ctx,
 			"go", "build", "-o", os.DevNull, tf.Name(),
 		).CombinedOutput()
+		if err != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if err == nil {
 			return nil, nil
 		}
