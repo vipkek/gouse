@@ -1,0 +1,8 @@
+package p
+
+// Tests mixed behavior with gofmt-shaped fake usages already in the file.
+func main() {
+	existing := ""
+	_ = existing /* TODO: gouse */
+	newNotUsed := ""; _ = newNotUsed /* TODO: gouse */
+}

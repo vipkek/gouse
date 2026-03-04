@@ -47,18 +47,10 @@ var (
 	)
 )
 
-// toggle removes existing fake usages or inserts new ones based on build
-// diagnostics.
+// toggle first analyzes build diagnostics to add fake usages for currently
+// unused variables. If none are reported, it removes previously created fake
+// usages.
 func toggle(ctx context.Context, code []byte) ([]byte, error) {
-	// fakeUsage must run before fakeUsageAfterGofmt because it also removes the
-	// leading ‘;’.
-	if fakeUsage.Match(code) {
-		return fakeUsage.ReplaceAll(code, []byte("")), nil
-	}
-	if fakeUsageAfterGofmt.Match(code) {
-		return fakeUsageAfterGofmt.ReplaceAll(code, []byte("")), nil
-	}
-
 	lines := bytes.Split(code, []byte("\n"))
 	// Comment out imports that fail with a missing module diagnostic and store
 	// their line numbers.
@@ -74,8 +66,8 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		*l = append([]byte(commentPrefix), *l...)
 		commentedLinesNums = append(commentedLinesNums, info.lineNum)
 	}
-	// Get ‘declared and not used’ diagnostics and insert fake usages for the
-	// reported names.
+	// Get ‘declared and not used’ diagnostics from the source with commented
+	// imports, then insert fake usages for reported names if needed.
 	notUsedVarsInfo, err := getSymbolsInfoFromBuildErrors(
 		ctx,
 		bytes.Join(lines, []byte("\n")),
@@ -84,12 +76,25 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("toggle: %w", err)
 	}
-	for _, info := range notUsedVarsInfo {
-		l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
-		*l = appendBeforeTrailingCR(*l, []byte(
-			fakeUsagePrefix+info.name+fakeUsageSuffix,
-		))
+
+	if len(notUsedVarsInfo) > 0 {
+		for _, info := range notUsedVarsInfo {
+			l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
+			*l = appendBeforeTrailingCR(*l, []byte(
+				fakeUsagePrefix+info.name+fakeUsageSuffix,
+			))
+		}
+		// Restore the commented imports.
+		for _, line := range commentedLinesNums {
+			l := &lines[line]
+			uncommentedLine := []rune(
+				string(*l),
+			)[len([]rune(commentPrefix)):]
+			*l = []byte(string(uncommentedLine))
+		}
+		return bytes.Join(lines, []byte("\n")), nil
 	}
+
 	// Restore the commented imports.
 	for _, line := range commentedLinesNums {
 		l := &lines[line]
@@ -98,7 +103,17 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		)[len([]rune(commentPrefix)):]
 		*l = []byte(string(uncommentedLine))
 	}
-	return bytes.Join(lines, []byte("\n")), nil
+	output := bytes.Join(lines, []byte("\n"))
+
+	// fakeUsage must run before fakeUsageAfterGofmt because it also removes the
+	// leading ‘;’.
+	if fakeUsage.Match(output) {
+		return fakeUsage.ReplaceAll(output, []byte("")), nil
+	}
+	if fakeUsageAfterGofmt.Match(output) {
+		return fakeUsageAfterGofmt.ReplaceAll(output, []byte("")), nil
+	}
+	return output, nil
 }
 
 func appendBeforeTrailingCR(line, extra []byte) []byte {

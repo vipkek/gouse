@@ -9,10 +9,10 @@
 // writes the toggled version to stdout. The ‘-w’ flag writes the result back to
 // the file. If multiple paths are provided, ‘-w’ is required.
 //
-// gouse first removes previously created fake usages. If there is nothing to
-// remove, it builds the input and checks the build output for ‘declared and not
-// used’ errors. If there are any, it creates fake usages for the reported
-// unused variables.
+// gouse first builds the input and checks the build output for ‘declared and
+// not used’ errors. If there are any, it creates fake usages for the reported
+// unused variables. If there are none, it removes previously created fake
+// usages.
 //
 // Examples
 //
@@ -54,7 +54,7 @@ import (
 const (
 	errorLogPrefix = "error: "
 	logFlag        = 0
-	currentVersion = "1.6.0"
+	currentVersion = "2.0.0"
 )
 
 var (

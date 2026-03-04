@@ -1,0 +1,10 @@
+package p
+
+// Any non-existent third party dependency works.
+import "github.com/gorilla/mux"
+
+// Tests mixed behavior when missing-module imports are present.
+func main() {
+	existing := ""; _ = existing /* TODO: gouse */
+	newNotUsed := ""
+}

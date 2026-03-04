@@ -6,7 +6,7 @@ and leaving a TODO comment. ![a demo](demo.gif)
 ## Installation
 
 ```sh
-go install github.com/looshch/gouse@latest
+go install github.com/looshch/gouse/v2@latest
 ```
 
 ## Usage
@@ -49,10 +49,10 @@ notUsedFromCore = true; _ = notUsedFromCore /* TODO: gouse */
 
 ## How it works
 
-`gouse` first removes previously created fake usages. If there is nothing to
-remove, it builds the input and checks the build output for ‘declared and not
-used’ errors. If there are any, it creates fake usages for the reported
-unused variables.
+`gouse` first builds the input and checks the build output for
+‘declared and not used’ errors. If there are any, it creates fake usages for
+the reported unused variables. If there are none, it removes previously
+created fake usages.
 
 ## Integrations
 
@@ -64,3 +64,4 @@ unused variables.
 ## Credits
 
 Inspired by [Nikita Rabaev](https://github.com/nikrabaev)’s idea.
+Influenced by [Michael Samoilenko](https://github.com/michaelsamoilenko).

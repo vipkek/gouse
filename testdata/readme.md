@@ -8,6 +8,9 @@ godoc-like comments for `main()`. All their relations are described below.
     switch_forms|unicode}.{input|golden}` test cases when imports are unused
     or missing, when additional declaration sites need fake usages, and when
     current switch and Unicode edge cases are being characterized.
+  * `not_used_with_existing_{fake|gofmted_fake|fake_no_provider}.{input|golden}`
+    test mixed cases where existing fake usages must stay while new unused
+    variables still require additional fake usages.
   * `used_gofmted{|_different_name_length|_var_forms|_control_headers|
     _unicode}.{input|golden}` checks cases when files are `gofmt`ed after
     creating fake usages.

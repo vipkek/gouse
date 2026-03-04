@@ -1,0 +1,8 @@
+package p
+
+// Tests mixed behavior: existing fake usages must be kept while new ones are
+// added for currently reported unused variables.
+func main() {
+	existing := ""; _ = existing /* TODO: gouse */
+	newNotUsed := ""; _ = newNotUsed /* TODO: gouse */
+}
