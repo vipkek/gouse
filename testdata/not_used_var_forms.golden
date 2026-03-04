@@ -1,0 +1,10 @@
+package p
+
+// Tests var statements with fake usages.
+func typedVar() {
+	var typed string; _ = typed /* TODO: gouse */
+}
+
+func varSameLine() {
+	var left, right = 1, 2; _ = left /* TODO: gouse */; _ = right /* TODO: gouse */
+}

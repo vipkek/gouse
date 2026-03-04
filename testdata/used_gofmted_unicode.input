@@ -1,0 +1,7 @@
+package p
+
+// Tests non-ASCII identifier handling with fake usages.
+func nonASCIIGofmted() {
+	знач := 1
+	_ = знач /* TODO: gouse */
+}

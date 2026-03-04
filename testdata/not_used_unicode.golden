@@ -1,0 +1,6 @@
+package p
+
+// Tests non-ASCII identifier handling.
+func nonASCII() {
+	знач := 1; _ = знач /* TODO: gouse */
+}

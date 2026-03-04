@@ -1,0 +1,26 @@
+package p
+
+// Tests flow control statements with fake usages.
+func ifInit() {
+	if x := 1; true {
+	}
+}
+
+func forInit() {
+	for x := 0; false; {
+	}
+}
+
+func selectRecv() {
+	ch := make(chan int)
+	select {
+	case x := <-ch:
+		_ = ch
+	}
+}
+
+func rangeVars() {
+	for i, v := range []int{1} {
+		break
+	}
+}

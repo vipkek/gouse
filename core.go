@@ -17,8 +17,7 @@ const (
 
 	noProviderErrorRegexpSuffix = "no required module provides package"
 	commentPrefix               = "// "
-
-	notUsedErrorRegexpSuffix = "declared and not used:"
+	notUsedErrorRegexpSuffix    = "declared and not used"
 )
 
 var (
@@ -27,8 +26,9 @@ var (
 		fakeUsagePrefix + ".*" + escapedFakeUsageSuffix,
 	)
 	fakeUsageAfterGofmt = regexp.MustCompile(
-		`\s*_\s*= \w*\s*` + escapedFakeUsageSuffix,
+		`\s*_\s*=\s*[_\pL][_\pL\pN]*\s*` + escapedFakeUsageSuffix,
 	)
+	notUsedErrorRegexpSuffixWithColon = notUsedErrorRegexpSuffix + ":"
 )
 
 // toggle returns toggled code. First it tries to remove previosly created fake
@@ -63,13 +63,13 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	notUsedVarsInfo, err := getSymbolsInfoFromBuildErrors(
 		ctx,
 		bytes.Join(lines, []byte("\n")),
-		notUsedErrorRegexpSuffix,
+		notUsedErrorRegexpSuffixWithColon,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("toggle: %v", err)
 	}
 	for _, info := range notUsedVarsInfo {
-		l := &lines[info.lineNum]
+		l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
 		*l = append(*l, []byte(
 			fakeUsagePrefix+info.name+fakeUsageSuffix)...,
 		)
@@ -85,6 +85,35 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	return bytes.Join(lines, []byte("\n")), nil
 }
 
+func getFakeUsageLineNum(lines [][]byte, lineNum int) int {
+	if !isSwitchHeaderLine(lines[lineNum]) {
+		return lineNum
+	}
+	switchClauseLine, ok := getSwitchClauseLineNum(lines, lineNum)
+	if !ok {
+		return lineNum
+	}
+	return switchClauseLine
+}
+
+func isSwitchHeaderLine(line []byte) bool {
+	return bytes.Contains(line, []byte("switch")) &&
+		bytes.Contains(line, []byte("{"))
+}
+
+func getSwitchClauseLineNum(lines [][]byte, switchLineNum int) (int, bool) {
+	for i := switchLineNum + 1; i < len(lines); i++ {
+		trimmed := bytes.TrimSpace(lines[i])
+		if bytes.HasPrefix(trimmed, []byte("case ")) || bytes.HasPrefix(trimmed, []byte("default:")) {
+			return i, true
+		}
+		if bytes.HasPrefix(trimmed, []byte("}")) {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
 // symbolInfo represents name and line number of symbols (variables, functions,
 // imports, etc.) from build errors.
 type symbolInfo struct {
@@ -93,24 +122,21 @@ type symbolInfo struct {
 }
 
 const (
-	goFileExt    = ".go"
-	nameIndex    = 1
-	lineNumIndex = 1
+	goFileExt     = ".go"
+	lineNumIndex  = 1
+	matchEndIndex = 1
 )
 
 var (
-	// symbolPositionInErrorRegexp catches the Go file extension and the
-	// position of the symbol from the error with the trailing space
-	// symbol.
+	// symbolPositionInError catches the Go file extension and the position
+	// of the symbol from the error with the trailing space symbol.
 	//
 	// Example
 	//
 	//	Given a build error ‘.../main[.go:4:2: ]<text of an error>’,
 	//	the catch group is denoted with ‘[]’.
-	symbolPositionInErrorRegexp = regexp.QuoteMeta(goFileExt) +
-		`:\d+:\d+: `
 	symbolPositionInError = regexp.MustCompile(
-		symbolPositionInErrorRegexp,
+		regexp.QuoteMeta(goFileExt) + `:\d+:\d+: `,
 	)
 )
 
@@ -147,9 +173,9 @@ func getSymbolsInfoFromBuildErrors(
 		}
 		berrors := strings.Split(string(boutput), "\n")
 		var info []symbolInfo
-		r := regexp.MustCompile(symbolPositionInErrorRegexp + suffix)
 		for _, e := range berrors {
-			if !r.MatchString(e) {
+			name, ok := getSymbolNameFromBuildError(e, suffix)
+			if !ok {
 				continue
 			}
 			lineNum, err := strconv.Atoi(strings.Split(
@@ -160,11 +186,39 @@ func getSymbolsInfoFromBuildErrors(
 				return nil, fmt.Errorf(format, err)
 			}
 			info = append(info, symbolInfo{
-				name: strings.Split(e, suffix)[nameIndex],
+				name: name,
 				// -1 is an adjustment for 0-based count.
 				lineNum: lineNum - 1,
 			})
 		}
 		return info, nil
 	}
+}
+
+func getSymbolNameFromBuildError(e, suffix string) (string, bool) {
+	match := symbolPositionInError.FindStringIndex(e)
+	if match == nil {
+		return "", false
+	}
+	afterMatch := e[match[matchEndIndex]:]
+
+	if name, ok := strings.CutPrefix(afterMatch, suffix); ok {
+		return name, true
+	}
+	if suffix != notUsedErrorRegexpSuffixWithColon {
+		return "", false
+	}
+
+	name, ok := strings.CutSuffix(
+		afterMatch,
+		notUsedErrorRegexpSuffix,
+	)
+	if !ok {
+		return "", false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
+	return " " + name, true
 }

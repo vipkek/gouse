@@ -1,0 +1,14 @@
+package p
+
+// Tests switch statement behavior.
+func switchInit() {
+	switch x := 1; {
+	default:
+	}
+}
+
+func typeSwitchVar() {
+	switch x := interface{}(1).(type) {
+	case int:
+	}
+}
