@@ -49,10 +49,10 @@ notUsedFromCore = true; _ = notUsedFromCore /* TODO: gouse */
 
 ## How it works
 
-First it tries to remove previously created fake usages. If there is nothing to
-remove, it tries to build an input and checks the build stdout for ‘declared and
-not used’ errors. If there is any, it creates fake usages for unused variables
-from the errors.
+`gouse` first removes previously created fake usages. If there is nothing to
+remove, it builds the input and checks the build output for ‘declared and not
+used’ errors. If there are any, it creates fake usages for the reported
+unused variables.
 
 ## Integrations
 
