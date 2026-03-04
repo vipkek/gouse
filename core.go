@@ -70,9 +70,9 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	}
 	for _, info := range notUsedVarsInfo {
 		l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
-		*l = append(*l, []byte(
-			fakeUsagePrefix+info.name+fakeUsageSuffix)...,
-		)
+		*l = appendBeforeTrailingCR(*l, []byte(
+			fakeUsagePrefix+info.name+fakeUsageSuffix,
+		))
 	}
 	// Un-comment commented out lines.
 	for _, line := range commentedLinesNums {
@@ -83,6 +83,14 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		*l = []byte(string(uncommentedLine))
 	}
 	return bytes.Join(lines, []byte("\n")), nil
+}
+
+func appendBeforeTrailingCR(line, extra []byte) []byte {
+	if len(line) == 0 || line[len(line)-1] != '\r' {
+		return append(line, extra...)
+	}
+	line = append(line[:len(line)-1], extra...)
+	return append(line, '\r')
 }
 
 func getFakeUsageLineNum(lines [][]byte, lineNum int) int {

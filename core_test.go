@@ -17,7 +17,6 @@ func TestToggle(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range inputsPaths {
-		p := p
 		_, filename := filepath.Split(p)
 		testName := filename[:len(filename)-len(filepath.Ext(p))]
 		t.Run(testName, func(t *testing.T) {
@@ -41,6 +40,54 @@ func TestToggle(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestToggleCRLFInsertion(t *testing.T) {
+	t.Run("simple insertion", func(t *testing.T) {
+		t.Parallel()
+		input := []byte(
+			"package p\r\n\r\nfunc main() {\r\n\tx := 1\r\n}\r\n",
+		)
+		want := []byte(
+			"package p\r\n\r\nfunc main() {\r\n" +
+				"\tx := 1; _ = x /* TODO: gouse */\r\n}\r\n",
+		)
+
+		got, err := toggle(context.Background(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf(filesCmpErr, got, want)
+		}
+		if bytes.Contains(got, []byte("\r; _ =")) {
+			t.Fatalf("got malformed CRLF insertion: %q", got)
+		}
+	})
+
+	t.Run("switch clause insertion", func(t *testing.T) {
+		t.Parallel()
+		input := []byte(
+			"package p\r\n\r\nfunc main() {\r\n" +
+				"\tswitch x := 1; {\r\n\tdefault:\r\n\t}\r\n}\r\n",
+		)
+		want := []byte(
+			"package p\r\n\r\nfunc main() {\r\n" +
+				"\tswitch x := 1; {\r\n" +
+				"\tdefault:; _ = x /* TODO: gouse */\r\n\t}\r\n}\r\n",
+		)
+
+		got, err := toggle(context.Background(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf(filesCmpErr, got, want)
+		}
+		if bytes.Contains(got, []byte("\r; _ =")) {
+			t.Fatalf("got malformed CRLF insertion: %q", got)
+		}
+	})
 }
 
 const getSymbolsInfoFromBuildErrorsInput = `
