@@ -1,0 +1,10 @@
+package p
+
+// Tests if mixed fake usage forms are removed in one pass.
+func main() {
+	notUsed0 := false; _ = notUsed0 /* TODO: gouse */
+	used := true
+	notUsed1 := ""
+	_ = notUsed1 /* TODO: gouse */
+	_ = used
+}

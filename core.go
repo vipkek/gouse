@@ -108,10 +108,10 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 	// fakeUsage must run before fakeUsageAfterGofmt because it also removes the
 	// leading ‘;’.
 	if fakeUsage.Match(output) {
-		return fakeUsage.ReplaceAll(output, []byte("")), nil
+		output = fakeUsage.ReplaceAll(output, []byte(""))
 	}
 	if fakeUsageAfterGofmt.Match(output) {
-		return fakeUsageAfterGofmt.ReplaceAll(output, []byte("")), nil
+		output = fakeUsageAfterGofmt.ReplaceAll(output, []byte(""))
 	}
 	return output, nil
 }
