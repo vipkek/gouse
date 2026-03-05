@@ -77,24 +77,6 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		return nil, fmt.Errorf("toggle: %w", err)
 	}
 
-	if len(notUsedVarsInfo) > 0 {
-		for _, info := range notUsedVarsInfo {
-			l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
-			*l = appendBeforeTrailingCR(*l, []byte(
-				fakeUsagePrefix+info.name+fakeUsageSuffix,
-			))
-		}
-		// Restore the commented imports.
-		for _, line := range commentedLinesNums {
-			l := &lines[line]
-			uncommentedLine := []rune(
-				string(*l),
-			)[len([]rune(commentPrefix)):]
-			*l = []byte(string(uncommentedLine))
-		}
-		return bytes.Join(lines, []byte("\n")), nil
-	}
-
 	// Restore the commented imports.
 	for _, line := range commentedLinesNums {
 		l := &lines[line]
@@ -103,15 +85,27 @@ func toggle(ctx context.Context, code []byte) ([]byte, error) {
 		)[len([]rune(commentPrefix)):]
 		*l = []byte(string(uncommentedLine))
 	}
+
+	if len(notUsedVarsInfo) > 0 {
+		for _, info := range notUsedVarsInfo {
+			l := &lines[getFakeUsageLineNum(lines, info.lineNum)]
+			*l = appendBeforeTrailingCR(*l, []byte(
+				fakeUsagePrefix+info.name+fakeUsageSuffix,
+			))
+		}
+	}
+
 	output := bytes.Join(lines, []byte("\n"))
 
-	// fakeUsage must run before fakeUsageAfterGofmt because it also removes the
-	// leading ‘;’.
-	if fakeUsage.Match(output) {
-		output = fakeUsage.ReplaceAll(output, []byte(""))
-	}
-	if fakeUsageAfterGofmt.Match(output) {
-		output = fakeUsageAfterGofmt.ReplaceAll(output, []byte(""))
+	if len(notUsedVarsInfo) == 0 {
+		// fakeUsage must run before fakeUsageAfterGofmt because it also removes
+		// the leading ‘;’.
+		if fakeUsage.Match(output) {
+			output = fakeUsage.ReplaceAll(output, []byte(""))
+		}
+		if fakeUsageAfterGofmt.Match(output) {
+			output = fakeUsageAfterGofmt.ReplaceAll(output, []byte(""))
+		}
 	}
 	return output, nil
 }

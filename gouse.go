@@ -123,42 +123,27 @@ func run(
 		return 1
 	}
 	for _, p := range conf.paths {
-		if err := processPath(
-			ctx,
-			p,
-			conf.write,
-			stdout,
-			openFile,
-		); err != nil {
+		if err := func(path string) error {
+			access := os.O_RDONLY
+			if conf.write {
+				access = os.O_RDWR
+			}
+
+			in, err := openFile(path, access, os.ModeExclusive)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+
+			out := stdout
+			if conf.write {
+				out = in
+			}
+			return toggleFile(ctx, in, out)
+		}(p); err != nil {
 			errorLog.Print(err)
 			return 1
 		}
 	}
 	return 0
-}
-
-func processPath(
-	ctx context.Context,
-	path string,
-	write bool,
-	stdout file,
-	openFile osOpenFile,
-) error {
-	var in file
-	var out *file
-	var access int
-	if write {
-		out = &in
-		access = os.O_RDWR
-	} else {
-		out = &stdout
-		access = os.O_RDONLY
-	}
-	var err error
-	in, err = openFile(path, access, os.ModeExclusive)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	return toggleFile(ctx, in, *out)
 }
