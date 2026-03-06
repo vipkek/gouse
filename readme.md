@@ -49,10 +49,9 @@ notUsedFromCore = true; _ = notUsedFromCore /* TODO: gouse */
 
 ## How it works
 
-`gouse` first builds the input and checks the build output for
-‘declared and not used’ errors. If there are any, it creates fake usages for
-the reported unused variables. If there are none, it removes previously
-created fake usages.
+`gouse` first builds the input and checks the build output for ‘declared and not
+used’ errors. If there are any, it creates fake usages for the reported unused
+variables. If there are none, it removes previously created fake usages.
 
 ## Integrations
 
@@ -60,8 +59,10 @@ created fake usages.
 - [Visual Studio Code plugin](https://marketplace.visualstudio.com/items?itemName=looshch.gouse).
 - [Open VSX Registry plugin](https://open-vsx.org/extension/looshch/gouse)—works
   in Cursor, Windsurf, Google Antigravity, Kiro, Trae, Void.
+- [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/30501-gouse)—works
+  in IntelliJ IDEA Ultimate and GoLand.
 
 ## Credits
 
-Inspired by [Nikita Rabaev](https://github.com/nikrabaev)’s idea.
-Influenced by [Michael Samoilenko](https://github.com/michaelsamoilenko).
+Inspired by [Nikita Rabaev](https://github.com/nikrabaev)’s idea. Influenced by
+[Michael Samoilenko](https://github.com/michaelsamoilenko).
